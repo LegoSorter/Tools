@@ -33,6 +33,8 @@ if __name__ == "__main__":
                         help='A file containing a list of bricks, with repeated names and common names',
                         type=str, dest='input')
     parser.add_argument('-o', '--output_file', required=True, help='An output path.', type=str, dest='output')
+    parser.add_argument('-sc', '--search_common_names', help='Search for alternative names if missing.',
+                        dest='search_common')
     args = parser.parse_args()
 
     names = get_unique_names_from_file(Path(args.input))
@@ -55,26 +57,26 @@ if __name__ == "__main__":
     found_names.union(missing_parts_general.difference(missing_after_second_try))
 
     print(f"Couldn't find following parts in the json parts list: "
-          f"\n\n{missing_after_second_try},\n\n"
-          f"searching for alternative names.")
+          f"\n\n{missing_after_second_try},\n\n")
 
-    alternate_names_all = set()
-    for missing_part in missing_after_second_try:
-        alternate_names = get_alternate_names(missing_part).split(' ')
-        print(f"Found alternate names {alternate_names} for {missing_part}")
-        for new_name in alternate_names:
-            alternate_names_all.add(new_name)
+    if args.search_common:
+        print(f"searching for alternative names.")
+        alternate_names_all = set()
+        for missing_part in missing_after_second_try:
+            alternate_names = get_alternate_names(missing_part).split(' ')
+            print(f"Found alternate names {alternate_names} for {missing_part}")
+            for new_name in alternate_names:
+                alternate_names_all.add(new_name)
 
-    unknown = get_missing_names_in_parts_file(alternate_names_all, 'parts.json')
-    found_among_alternate_names = alternate_names_all.difference(unknown)
+        unknown = get_missing_names_in_parts_file(alternate_names_all, 'parts.json')
+        found_among_alternate_names = alternate_names_all.difference(unknown)
 
-    all_found_names = found_names.union(found_among_alternate_names)
+        found_names = found_names.union(found_among_alternate_names)
 
-    print(f"Found {len(all_found_names)} from {len(names)}")
+        print(f"Found {len(found_names)} from {len(names)}")
 
-    for name in all_found_names:
-        with open('parts.json') as file:
-            found_parts_json = {
-                'parts': [part for part in json.load(file)['parts'] if part['base_file_name'] in all_found_names]}
-            with open(args.output, 'w') as output_file:
-                json.dump(found_parts_json, output_file)
+    with open('parts.json') as file:
+        found_parts_json = {
+            'parts': [part for part in json.load(file)['parts'] if part['base_file_name'] in found_names]}
+        with open(args.output, 'w') as output_file:
+            json.dump(found_parts_json, output_file)

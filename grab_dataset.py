@@ -8,7 +8,8 @@ def get_names_in_groups(file_name):
 
     with open(file_name) as file:
         for line in file:
-            groups.append([name.strip() for name in line.split(' ')])
+            groups.append([name.strip() for name in line.split(' ') if len(name.strip()) > 0])
+            groups[-1].sort()
 
     return groups
 
