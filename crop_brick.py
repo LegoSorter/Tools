@@ -42,6 +42,7 @@ def get_bounding_box(image, threshold=25, color_option=cv.COLOR_BGR2HLS):
     contours_original_image = find_contours(image, threshold, color_option)
     drawing = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
     drawing = draw_contours(drawing, contours_original_image, cv.FILLED)
+    drawing = cv.copyMakeBorder(drawing, 1, 1, 1, 1, cv.BORDER_CONSTANT, None, [0, 0, 0])
     contours_mask = find_contours(drawing, threshold)
     if len(contours_mask) == 0:
         raise Exception("Empty render!")
@@ -54,22 +55,28 @@ def is_image(file_name):
     return extension == 'jpeg' or extension == 'jpg' or extension == 'png'
 
 
-def process_images_in_path(input_path: Path, output_path: Path):
+def process_images_in_path(input_path: Path, output_path: Path, min_size):
     start_time = time.time()
     counter = 0
 
     for file in input_path.iterdir():
         if file.is_file() and is_image(file.name):
             try:
-                cropped_image = find_and_crop_brick(file, threshold=20)
-                save_image(cropped_image, output_path / file.name)
-                counter += 1
+                cropped_image = find_and_crop_brick(file, threshold=20, color_option=None)
+                if cropped_image.shape[0] * cropped_image.shape[1] >= min_size:
+                    save_image(cropped_image, output_path / file.name)
+                    counter += 1
+                else:
+                    raise Exception("Detected brick too small")
             except Exception:
                 logging.error(f"Got an empty render - {str(file)}. Trying to decrease the threshold!")
                 try:
-                    cropped_image = find_and_crop_brick(file, threshold=10, color_option=cv.COLOR_BGR2HLS)
-                    save_image(cropped_image, output_path / file.name)
-                    counter += 1
+                    cropped_image = find_and_crop_brick(file, threshold=5, color_option=cv.COLOR_BGR2HLS)
+                    if cropped_image.shape[0] * cropped_image.shape[1] >= min_size:
+                        save_image(cropped_image, output_path / file.name)
+                        counter += 1
+                    else:
+                        raise Exception("Detected brick too small")
                 except Exception:
                     logging.error(f"Got an empty render after decreasing the threshold - {str(file)}. Skipping...")
 
@@ -80,7 +87,7 @@ def process_images_in_path(input_path: Path, output_path: Path):
     )
 
 
-def process_recursive(input_path: Path, output_path: Path, executor):
+def process_recursive(input_path: Path, output_path: Path, executor, min_size):
     output_path.mkdir(exist_ok=True)
     dirs_to_process = []
 
@@ -91,9 +98,9 @@ def process_recursive(input_path: Path, output_path: Path, executor):
     futures = []
     for directory in dirs_to_process:
         sub_out_path = (output_path / directory.name)
-        futures.append(*process_recursive(directory, sub_out_path, executor))
+        futures.append(*process_recursive(directory, sub_out_path, executor, min_size))
 
-    futures.append(executor.submit(process_images_in_path, input_path, output_path))
+    futures.append(executor.submit(process_images_in_path, input_path, output_path, min_size))
     return futures
 
 
@@ -108,6 +115,9 @@ def find_and_crop_brick(file, threshold=20, color_option=None):
     return cropped_image
 
 
+# file = Path("/backup/RENDER_4/10928/10928_Black_2_1619057697.jpeg")
+# find_and_crop_brick(file)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Extract a foreground from the specified input.')
     parser.add_argument('-i' '--input_path', required=True, help='A path to a directory containing images to process.',
@@ -115,6 +125,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output_path', required=True, help='An output path.', type=str, dest='output')
     parser.add_argument('-r', '--recursive', action='store_true',
                         help='Process images in the input_path and its subdirectories.')
+    parser.add_argument('-m', '--min_size', required=True, help='Minimum area ofcropped image', dest='minsize')
     args = parser.parse_args()
 
     logging.basicConfig(filename='crop_brick_render_3.log',
@@ -127,8 +138,8 @@ if __name__ == "__main__":
 
     if args.recursive:
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = process_recursive(Path(args.input), Path(args.output), executor)
+            futures = process_recursive(Path(args.input), Path(args.output), executor, args.minsize)
             for future in futures:
                 future.result()
     else:
-        process_images_in_path(Path(args.input), Path(args.output))
+        process_images_in_path(Path(args.input), Path(args.output), args.minsize)
