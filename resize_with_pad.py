@@ -17,15 +17,12 @@ def get_processing_sequence(image_size):
     ])
 
 
-get_processing_sequence()
-
-
 def is_image(file_name):
     extension = file_name.split('.')[-1]
     return extension == 'jpeg' or extension == 'jpg' or extension == 'png'
 
 
-def process_images_in_path(input_path: Path, output_path: Path):
+def process_images_in_path(input_path: Path, output_path: Path, seq):
     start_time = time.time()
     counter = 0
 
@@ -42,7 +39,7 @@ def process_images_in_path(input_path: Path, output_path: Path):
     )
 
 
-def process_recursive(input_path: Path, output_path: Path, executor):
+def process_recursive(input_path: Path, output_path: Path, executor, seq):
     output_path.mkdir(exist_ok=True)
     dirs_to_process = []
 
@@ -53,9 +50,9 @@ def process_recursive(input_path: Path, output_path: Path, executor):
     futures = []
     for directory in dirs_to_process:
         sub_out_path = (output_path / directory.name)
-        futures.append(*process_recursive(directory, sub_out_path, executor))
+        futures.append(*process_recursive(directory, sub_out_path, executor, seq))
 
-    futures.append(executor.submit(process_images_in_path, input_path, output_path))
+    futures.append(executor.submit(process_images_in_path, input_path, output_path, seq))
     return futures
 
 
@@ -71,8 +68,9 @@ if __name__ == "__main__":
 
     if args.recursive:
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = process_recursive(Path(args.input), Path(args.output), executor, args.size)
+            futures = process_recursive(Path(args.input), Path(args.output), executor,
+                                        get_processing_sequence(args.size))
             for future in futures:
                 future.result()
     else:
-        process_images_in_path(Path(args.input), Path(args.output), args.size)
+        process_images_in_path(Path(args.input), Path(args.output), get_processing_sequence(args.size))
