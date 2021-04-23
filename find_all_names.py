@@ -3,7 +3,7 @@ from typing import List
 
 import requests
 import argparse
-import json
+import time
 
 
 class RebrickableClient:
@@ -27,11 +27,24 @@ class RebrickableClient:
 
     def get_all_lego_part_ids(self, lego_part_number: str):
         part_info = self.get_lego_part_info(lego_part_number)
-        return set(self.__get_ids_from_external(part_info['external_ids']) + [lego_part_number])
+        ids = self.__get_ids_from_external(part_info['external_ids']) if 'external_ids' in part_info else []
+        return [lego_part_number] + ids if lego_part_number not in ids else ids
 
     def get_all_lego_parts_ids(self, lego_parts_numbers: List[str]):
-        parts_json = self.get_lego_parts_info(lego_parts_numbers)
-        return self.__extract_ids_from_results(parts_json)
+        results = dict()
+        n = 100
+        for i in range(0, len(lego_parts_numbers), n):
+            chunk = lego_parts_numbers[i: i + n]
+            parts_json = self.get_lego_parts_info(chunk)
+            from_results = self.__extract_ids_from_results(parts_json)
+
+            for name in chunk:
+                if name not in from_results.keys():
+                    print(f"{name} is missing in results, adding empty record")
+
+            results.update(from_results)
+
+        return results
 
     def get_lego_part_ids_from_set(self, lego_set_number: str):
         parts_json = self.get_lego_set_parts(lego_set_number)
@@ -42,13 +55,15 @@ class RebrickableClient:
         for part in parts_json['results']:
             part_info = part['part'] if 'part' in part else part
             part_num = part_info['part_num']
-            external_ids = part_info['external_ids']
-            ids = self.__get_ids_from_external(external_ids)
 
             if part_num in all_parts:
                 continue
 
-            all_parts[part_num] = set(ids + [part_num])
+            external_ids = part_info['external_ids']
+            ids = self.__get_ids_from_external(external_ids)
+            ids = [part_num] + ids if part_num not in ids else ids
+            all_parts[part_num] = ids
+
         return all_parts
 
     @staticmethod
@@ -56,15 +71,15 @@ class RebrickableClient:
         brick_owl_nums = external_ids['BrickOwl'] if 'BrickOwl' in external_ids else []
         ldraw_nums = external_ids['LDraw'] if 'LDraw' in external_ids else []
         lego_numbers = external_ids['LEGO'] if 'LEGO' in external_ids else []
-        return brick_owl_nums + ldraw_nums + lego_numbers
+        return ldraw_nums + brick_owl_nums + lego_numbers
 
 
 def read_input_file(file_path: Path):
-    with open(file_path, 'r') as file:
-        all_names = set()
-        for line in file:
-            all_names.update([name.strip() for name in line.split(' ') if len(name) > 0])
-        return all_names
+    with open(file_path, 'r') as names_file:
+        all_names_from_file = set()
+        for line in names_file:
+            all_names_from_file.update([name.strip() for name in line.split(' ') if len(name) > 0])
+        return all_names_from_file
 
 
 if __name__ == "__main__":

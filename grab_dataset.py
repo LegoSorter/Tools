@@ -26,14 +26,14 @@ def copy_directory(input: Path, output: Path, files_only):
 
 def extract_dataset(names, output_path: Path, input_path: Path, files_only):
     common_name = names[0]
-    destination = output_path / common_name
-    destination.mkdir(parents=True, exist_ok=True)
 
     for name in names:
         src = input_path / name
         if not src.exists():
             print(f"Couldn't find a directory {src}")
         if src.exists():
+            destination = output_path / common_name
+            destination.mkdir(parents=True, exist_ok=True)
             copy_directory(src, destination, files_only)
 
 

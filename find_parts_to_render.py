@@ -3,7 +3,6 @@ import json
 import requests
 
 from pathlib import Path
-from group_common_names import get_alternate_names
 
 
 def get_unique_names_from_file(input_file: Path):
@@ -33,8 +32,6 @@ if __name__ == "__main__":
                         help='A file containing a list of bricks, with repeated names and common names',
                         type=str, dest='input')
     parser.add_argument('-o', '--output_file', required=True, help='An output path.', type=str, dest='output')
-    parser.add_argument('-sc', '--search_common_names', help='Search for alternative names if missing.',
-                        dest='search_common')
     args = parser.parse_args()
 
     names = get_unique_names_from_file(Path(args.input))
@@ -58,22 +55,6 @@ if __name__ == "__main__":
 
     print(f"Couldn't find following parts in the json parts list: "
           f"\n\n{missing_after_second_try},\n\n")
-
-    if args.search_common:
-        print(f"searching for alternative names.")
-        alternate_names_all = set()
-        for missing_part in missing_after_second_try:
-            alternate_names = get_alternate_names(missing_part).split(' ')
-            print(f"Found alternate names {alternate_names} for {missing_part}")
-            for new_name in alternate_names:
-                alternate_names_all.add(new_name)
-
-        unknown = get_missing_names_in_parts_file(alternate_names_all, 'parts.json')
-        found_among_alternate_names = alternate_names_all.difference(unknown)
-
-        found_names = found_names.union(found_among_alternate_names)
-
-        print(f"Found {len(found_names)} from {len(names)}")
 
     with open('parts.json') as file:
         found_parts_json = {
