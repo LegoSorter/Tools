@@ -98,7 +98,9 @@ def process_recursive(input_path: Path, output_path: Path, executor, min_size: i
     futures = []
     for directory in dirs_to_process:
         sub_out_path = (output_path / directory.name)
-        futures.append(*process_recursive(directory, sub_out_path, executor, min_size))
+        children = process_recursive(directory, sub_out_path, executor, min_size)
+        for child in children:
+            futures.append(child)
 
     futures.append(executor.submit(process_images_in_path, input_path, output_path, min_size))
     return futures
