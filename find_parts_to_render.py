@@ -10,7 +10,7 @@ def get_unique_names_from_file(input_file: Path):
 
     with open(input_file) as file:
         for line in file:
-            all_names.add(line.strip())
+            all_names.update([name.strip() for name in line.split(' ') if len(name.strip()) > 0])
 
     return all_names
 

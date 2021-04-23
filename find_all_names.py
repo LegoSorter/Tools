@@ -83,7 +83,7 @@ def read_input_file(file_path: Path):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Extracts results from keras logs.')
+    parser = argparse.ArgumentParser(description='Find all names for bricks.')
     parser.add_argument('-i' '--input_file', required=True,
                         help='A file containing list of parts or sets to find alternative names for.',
                         type=str, dest='input')
