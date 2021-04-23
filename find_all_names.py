@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 
 import requests
@@ -58,6 +59,34 @@ class RebrickableClient:
         return brick_owl_nums + ldraw_nums + lego_numbers
 
 
+def read_input_file(file_path: Path):
+    with open(file_path, 'r') as file:
+        all_names = set()
+        for line in file:
+            all_names.update([name.strip() for name in line.split(' ') if len(name) > 0])
+        return all_names
+
+
 if __name__ == "__main__":
-    client = RebrickableClient('')
-    print(client.get_all_lego_parts_ids(['3001']))
+    parser = argparse.ArgumentParser(description='Extracts results from keras logs.')
+    parser.add_argument('-i' '--input_file', required=True,
+                        help='A file containing list of parts or sets to find alternative names for.',
+                        type=str, dest='input')
+    parser.add_argument('-o', '--output_file', required=True, help='A path to an output file.', type=str, dest='output')
+    parser.add_argument('-k', '--key', required=True, help='A Rebrickable authorization key')
+    parser.add_argument('-s', '--set', action='store_true', help='An input file contains sets.')
+    args = parser.parse_args()
+    client = RebrickableClient(args.key)
+
+    all_names = list(read_input_file(args.input))
+
+    if args.set:
+        all_ids = dict()
+        for set_name in all_names:
+            all_ids = {**all_ids, **client.get_lego_part_ids_from_set(set_name)}
+    else:
+        all_ids = client.get_all_lego_parts_ids(all_names)
+
+    with open(args.output, 'w') as file:
+        for values in all_ids.values():
+            file.write(' '.join(values) + '\n')
