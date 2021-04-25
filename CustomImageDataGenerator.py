@@ -18,7 +18,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                  aug_sequence,
                  reduction=0.0,
                  batch_size=32,
-                 size=224,
+                 image_size=224,
                  shuffle=True,
                  balance_dataset=True):
         if reduction != 0.0 and balance_dataset is False:
@@ -30,7 +30,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.df_index = self.df.index.tolist()
         self.labels = self.extract_labels()
         self.indexes = np.arange(len(self.df_index))
-        self.size = size
+        self.size = image_size
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.aug_sequence = aug_sequence

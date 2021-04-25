@@ -1,5 +1,5 @@
 import argparse as argparse
-import random
+import numpy
 import tensorflow as tf
 import imgaug.augmenters as iaa
 import imgaug as ia
@@ -15,7 +15,6 @@ from tensorflow.keras import layers
 from tensorflow.keras.applications import EfficientNetB0
 
 from CustomImageDataGenerator import DataGenerator
-from PerformaneVisualizationCallback import PerformanceVisualizationCallback
 
 gpus = tf.config.list_physical_devices('GPU')
 for gpu in gpus:
@@ -132,7 +131,7 @@ def get_augmenting_sequence():
     ])
 
 
-def build_model(num_classes, img_size):
+def build_model(num_classes, config):
     img_augmentation = Sequential(
         [
             preprocessing.RandomRotation(factor=0.5),
@@ -143,7 +142,7 @@ def build_model(num_classes, img_size):
         name="img_augmentation",
     )
 
-    inputs = layers.Input(shape=(img_size, img_size, 3))
+    inputs = layers.Input(shape=(config.img_size, config.img_size, 3))
     x = img_augmentation(inputs)
     model = EfficientNetB0(include_top=False, input_tensor=x, weights="imagenet")
 
@@ -160,9 +159,9 @@ def build_model(num_classes, img_size):
 
     # Compile
     model = tf.keras.Model(inputs, outputs, name="EfficientNet")
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
-    model.compile(optimizer=optimizer, loss="categorical_crossentropy",
-                  metrics=["accuracy", metrics.top_k_categorical_accuracy, metrics.categorical_accuracy])
+    optimizer = tf.keras.optimizers.Adam(learning_rate=config.learning_rate)
+    model.compile(optimizer=optimizer, loss=config.loss_function,
+                  metrics=["accuracy", metrics.top_k_categorical_accuracy])
 
     return model
 
@@ -193,49 +192,59 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--size', required=True, help='A size of images.')
     parser.add_argument('-b', '--batch_size', help='Batch size used in training', dest='batch')
     parser.add_argument('-o', '--history_output', help="Output directory for training history", dest='history')
-
     args = parser.parse_args()
 
-    wandb.login()
+    ####### PREPARE ######
 
     train_df = pandas.read_csv(args.train)
     test_df = pandas.read_csv(args.validation)
-    train_base_generator = DataGenerator(train_df, 'image_path', 'label', size=int(args.size),
+    classes_train = train_df.label.unique()
+    classes_train.sort()
+    classes_test = test_df.label.unique()
+    classes_test.sort()
+
+    if classes_test.shape != classes_train.shape or not (numpy.array(classes_test) == numpy.array(classes_train)).all():
+        print("Labels in train and test dataset are different")
+        intersection = classes_test[numpy.in1d(classes_test, classes_train)]
+        print(f"There is {len(intersection)} common labels, the rest is ignored.")
+        train_df = train_df[train_df.label.isin(intersection)]
+        test_df = test_df[test_df.label.isin(intersection)]
+
+    NUM_CLASSES = len(train_df.label.unique())
+
+    train_base_generator = DataGenerator(train_df, 'image_path', 'label', image_size=int(args.size),
                                          aug_sequence=get_augmenting_sequence(),
                                          batch_size=int(args.batch))
     test_base_generator = DataGenerator(test_df, 'image_path', 'label', reduction=0.98, aug_sequence=None,
-                                        size=int(args.size),
+                                        image_size=int(args.size),
                                         batch_size=int(args.batch))
 
-    classes_train = train_df['label'].unique()
-    classes_train.sort()
-    classes_test = test_df['label'].unique()
-    classes_test.sort()
+    wandb.login()
 
-    if not (classes_test == classes_test).all():
-        raise Exception("Labels in train and test dataset are different!")
+    run = wandb.init(project='lego',
+                     config={
+                         "learning_rate": 1e-2,
+                         "epochs": 25,
+                         "batch_size": 32,
+                         "loss_function": "categorical_crossentropy",
+                         "architecture": "CNN",
+                         "img_size": int(args.size),
+                     })
+    config = wandb.config
+    model = build_model(NUM_CLASSES, config)
 
-    NUM_CLASSES = len(classes_train)
-    model = build_model(NUM_CLASSES, int(args.size))
-    performance_callback_1 = PerformanceVisualizationCallback(
-        model=model,
-        data=test_base_generator,
-        output_dir=Path(args.history) / 'performance_visualizations_1')
-    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=100, epochs=10)
+    ####### TRAIN #######
+
+    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=100, epochs=10,
+                          callbacks=[WandbCallback()])
     save_history_to_file(history_1, Path(args.history) / 'history_1.csv')
 
-    performance_callback_2 = PerformanceVisualizationCallback(
-        model=model,
-        data=test_base_generator,
-        output_dir=Path(args.history) / 'performance_visualizations_2')
     unfreeze_model(model, 30, 1e-3)
-    history_2 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=20)
+    history_2 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=20,
+                          callbacks=[WandbCallback()])
     save_history_to_file(history_2, Path(args.history) / 'history_2.csv')
 
-    performance_callback_3 = PerformanceVisualizationCallback(
-        model=model,
-        data=test_base_generator,
-        output_dir=Path(args.history) / 'performance_visualizations_3')
-    unfreeze_model(model, 100, 1e-4)
-    history_3 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=80)
+    unfreeze_model(model, 80, 1e-4)
+    history_3 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=80,
+                          callbacks=[WandbCallback()])
     save_history_to_file(history_3, Path(args.history) / 'history_3.csv')
