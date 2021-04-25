@@ -39,6 +39,8 @@ class RebrickableClient:
             from_results = self.__extract_ids_from_results(parts_json)
 
             for name in chunk:
+                if len(name) == 0:
+                    continue
                 if name not in from_results.keys():
                     print(f"{name} is missing in results, adding empty record")
                     from_results[name] = [name]
@@ -83,6 +85,38 @@ def read_input_file(file_path: Path):
         return all_names_from_file
 
 
+def contains_any(group_base, names):
+    for name in names:
+        if name in group_base:
+            return True
+    return False
+
+
+def add_to_group(all_groups: List[List], names):
+    all_groups_merged = []
+    merged_group = []
+    for group_names in all_groups:
+        if contains_any(group_names, names):
+            merged_group.extend(group_names)
+            merged_group.extend(names)
+            merged_group = list(dict.fromkeys(merged_group))  # It removes duplicates while keeping order
+        else:
+            all_groups_merged.append(list(dict.fromkeys(group_names)))
+
+    all_groups_merged.append(merged_group if len(merged_group) > 0 else names)
+    return all_groups_merged
+
+
+def merge_common(names_dict):
+    source_groups = list(names_dict.values())
+    source_groups.sort(key=lambda x: len(x), reverse=True)
+    results = []
+    for names in source_groups:
+        results = add_to_group(results, names)
+
+    return results
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Find all names for bricks.')
     parser.add_argument('-i' '--input_file', required=True,
@@ -103,6 +137,10 @@ if __name__ == "__main__":
     else:
         all_ids = client.get_all_lego_parts_ids(all_names)
 
+    result_groups = merge_common(all_ids)
+
     with open(args.output, 'w') as file:
-        for values in all_ids.values():
-            file.write(' '.join(values) + '\n')
+        for group in result_groups:
+            if len(group) == 0:
+                continue
+            file.write(' '.join(group) + '\n')
