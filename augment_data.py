@@ -18,9 +18,10 @@ def get_processing_sequence(image_size):
     return iaa.Sequential([
         # iaa.Resize({"longer-side": image_size, "shorter-side": "keep-aspect-ratio"}),
         # iaa.PadToFixedSize(width=image_size, height=image_size),
+        iaa.Resize(image_size),
         iaa.Fliplr(0.3),
         iaa.Flipud(0.3),
-        sometimes(iaa.Affine(
+        iaa.Affine(
             scale={"x": (0.8, 1.0), "y": (0.8, 1.0)},
             translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
             rotate=(-45, 45),
@@ -28,8 +29,8 @@ def get_processing_sequence(image_size):
             order=[0, 1],
             cval=(0, 255),
             mode=ia.ALL
-        )),
-        iaa.ChangeColorTemperature(kelvin=(1000, 11000)),
+        ),
+        # iaa.ChangeColorTemperature(kelvin=(1000, 11000)),
         iaa.SomeOf((0, 5),
                    [
                        # Convert some images into their superpixel representation,
@@ -189,21 +190,29 @@ if __name__ == "__main__":
     else:
         process_images_in_path(Path(args.input), Path(args.output), get_processing_sequence(int(args.size)))
 
-## TESTS
+# ## TESTS
 # import matplotlib.pyplot as plt
 #
 # processing = get_processing_sequence(244)
 #
-# for file in Path("/backup/TEST_AUG").iterdir():
+# for file in Path("/backup/RENDERS_EXAMPLES").iterdir():
 #     start_time = time.time()
 #     image_before = Image.open(file)
-#     image_after = processing(image=numpy.asarray(image_before))
+#     image_after_1 = processing(image=numpy.asarray(image_before))
+#     image_after_2 = processing(image=numpy.asarray(image_before))
+#     image_after_3 = processing(image=numpy.asarray(image_before))
 #     seconds_elapsed = time.time() - start_time
 #     print(
 #         f"Processing path took {seconds_elapsed} seconds, "
 #     )
-#     f, ax = plt.subplots(1, 2)
+#     f, ax = plt.subplots(1, 4, figsize=(8, 2.5))
 #     ax[0].imshow(image_before)
-#     ax[1].imshow(image_after)
+#     ax[0].set_axis_off()
+#     ax[1].imshow(image_after_1)
+#     ax[1].set_axis_off()
+#     ax[2].imshow(image_after_2)
+#     ax[2].set_axis_off()
+#     ax[3].imshow(image_after_3)
+#     ax[3].set_axis_off()
 #
 #     f.savefig(f"output/aug_{file.name}")

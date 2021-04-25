@@ -71,7 +71,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         """Denotes the number of batches per epoch"""
         return len(self.df_index) // self.batch_size
 
-    def reduce(self,  dataframe, reduction):
+    def reduce(self, dataframe, reduction):
         if reduction > 0.0:
             reduction_count = int(len(dataframe) * reduction)
             drop_indices = np.random.choice(dataframe.index, reduction_count, replace=False)
@@ -79,7 +79,9 @@ class DataGenerator(tf.keras.utils.Sequence):
         return dataframe
 
     def balance_dataset(self, dataframe, label_column, path_column, reduction):
-        count_per_label = dataframe.value_counts(subset=[label_column]).reset_index(name='count').set_index(label_column)['count'].to_dict()
+        count_per_label = \
+        dataframe.value_counts(subset=[label_column]).reset_index(name='count').set_index(label_column)[
+            'count'].to_dict()
         upper_limit = int((1.0 - reduction) * max(count_per_label.values()))
         grouped_by_label = dataframe.groupby(label_column)[path_column].apply(list).reset_index(name='paths')
 
@@ -94,7 +96,8 @@ class DataGenerator(tf.keras.utils.Sequence):
                 dataframe = dataframe.drop(drop_indices).reset_index(drop=True)
             elif missing > 0:
                 repeated = random.choices(row['paths'], k=missing)
-                extension = pandas.DataFrame([[label_name, path] for path in repeated], columns=[label_column, path_column])
+                extension = pandas.DataFrame([[label_name, path] for path in repeated],
+                                             columns=[label_column, path_column])
                 dataframe = pandas.concat([dataframe, extension])
 
         return dataframe
@@ -192,7 +195,7 @@ class PerformanceVisualizationCallback(Callback):
         fig_size = len(self.data.labels) // 2
         fig, ax = plt.subplots(figsize=(fig_size + 4, fig_size + 3))
 
-        plot_confusion_matrix(y_true, y_pred, ax=ax,  x_tick_rotation=1)
+        plot_confusion_matrix(y_true, y_pred, ax=ax, x_tick_rotation=1)
         fig.savefig(str(self.image_dir / f'confusion_matrix_epoch_{epoch}'))
         plt.close(fig)
 
@@ -209,7 +212,7 @@ def get_augmenting_sequence():
     return iaa.Sequential([
         iaa.Fliplr(0.3),
         iaa.Flipud(0.3),
-        sometimes(iaa.Affine(
+        iaa.Affine(
             scale={"x": (0.8, 1.0), "y": (0.8, 1.0)},
             translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
             rotate=(-45, 45),
@@ -217,7 +220,7 @@ def get_augmenting_sequence():
             order=[0, 1],
             cval=(0, 255),
             mode=ia.ALL
-        )),
+        ),
         iaa.SomeOf((0, 5),
                    [
                        # Convert some images into their superpixel representation,
@@ -382,7 +385,8 @@ if __name__ == '__main__':
     train_base_generator = DataGenerator(train_df, 'image_path', 'label', size=int(args.size),
                                          aug_sequence=get_augmenting_sequence(),
                                          batch_size=int(args.batch))
-    test_base_generator = DataGenerator(test_df, 'image_path', 'label', reduction=0.98, aug_sequence=None, size=int(args.size),
+    test_base_generator = DataGenerator(test_df, 'image_path', 'label', reduction=0.98, aug_sequence=None,
+                                        size=int(args.size),
                                         batch_size=int(args.batch))
 
     classes_train = train_df['label'].unique()
