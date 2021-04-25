@@ -41,6 +41,7 @@ class RebrickableClient:
             for name in chunk:
                 if name not in from_results.keys():
                     print(f"{name} is missing in results, adding empty record")
+                    from_results[name] = [name]
 
             results.update(from_results)
 
