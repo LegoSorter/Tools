@@ -94,7 +94,7 @@ class DataGenerator(tf.keras.utils.Sequence):
     def get_all_classes(self, one_hot=False):
         y_true_list = []
         for label in self.df['label']:
-            y_true = self.__to_one_hot(label) if one_hot else label
+            y_true = self.__to_one_hot(label) if one_hot else str(label)
             y_true_list.append(y_true)
 
         return np.array(y_true_list)

@@ -1,3 +1,4 @@
+import wandb
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas
@@ -6,15 +7,47 @@ from pathlib import Path
 from sklearn.metrics import classification_report
 from scikitplot.metrics import plot_confusion_matrix, plot_roc
 from tensorflow.keras.callbacks import Callback
-from CustomImageDataGenerator import DataGenerator
+from generators import DataGenerator
+
+
+class PRMetrics(Callback):
+    """ Custom callback to compute metrics at the end of each training epoch"""
+
+    def __init__(self, generator: DataGenerator = None, num_log_batches=1):
+        super().__init__()
+        self.generator = generator
+        self.num_batches = num_log_batches
+        # store full names of classes
+        self.flat_class_names = generator.extract_labels()
+
+    def on_epoch_end(self, epoch, logs={}):
+        # collect validation data and ground truth labels from generator
+        val_data, val_labels = zip(*(self.generator[i] for i in range(self.num_batches)))
+        val_data, val_labels = np.vstack(val_data), np.vstack(val_labels)
+
+        # use the trained model to generate predictions for the given number
+        # of validation data batches (num_batches)
+        val_predictions = self.model.predict(val_data)
+        ground_truth_class_ids = val_labels.argmax(axis=1)
+        # take the argmax for each set of prediction scores
+        # to return the class id of the highest confidence prediction
+        top_pred_ids = val_predictions.argmax(axis=1)
+
+        # Log confusion matrix
+        # the key "conf_mat" is the id of the plot--do not change
+        # this if you want subsequent runs to show up on the same plot
+        wandb.log({"conf_mat": wandb.plot.confusion_matrix(probs=None,
+                                                           preds=top_pred_ids,
+                                                           y_true=ground_truth_class_ids,
+                                                           class_names=self.flat_class_names)})
 
 
 class PerformanceVisualizationCallback(Callback):
-    def __init__(self, model, data: DataGenerator, output_dir: Path):
+    def __init__(self, data: DataGenerator, output_dir: Path, evaluate_every_x_epoch=1):
         super().__init__()
-        self.model = model
         self.data = data
         self.image_dir = output_dir
+        self.evaluate_every_x_epoch = evaluate_every_x_epoch
         output_dir.mkdir(exist_ok=True, parents=True)
 
     def on_epoch_end(self, epoch, logs={}):

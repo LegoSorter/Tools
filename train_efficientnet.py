@@ -6,15 +6,16 @@ import imgaug as ia
 import pandas
 import wandb
 
-from wandb.keras import WandbCallback
 from pathlib import Path
 from tensorflow.keras import metrics
 from tensorflow.keras.layers.experimental import preprocessing
 from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers
 from tensorflow.keras.applications import EfficientNetB0
+from wandb.integration.keras import WandbCallback
 
-from CustomImageDataGenerator import DataGenerator
+from evaluation_callbacks import PerformanceVisualizationCallback
+from generators import DataGenerator
 
 gpus = tf.config.list_physical_devices('GPU')
 for gpu in gpus:
@@ -194,6 +195,9 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--history_output', help="Output directory for training history", dest='history')
     args = parser.parse_args()
 
+    history_path = Path(args.history)
+    history_path.mkdir(exist_ok=True, parents=True)
+
     ####### PREPARE ######
 
     train_df = pandas.read_csv(args.train)
@@ -222,6 +226,7 @@ if __name__ == '__main__':
     wandb.login()
 
     run = wandb.init(project='lego',
+                     name='300_classes_1',
                      config={
                          "learning_rate": 1e-2,
                          "epochs": 25,
@@ -235,16 +240,25 @@ if __name__ == '__main__':
 
     ####### TRAIN #######
 
-    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=100, epochs=10,
-                          callbacks=[WandbCallback()])
-    save_history_to_file(history_1, Path(args.history) / 'history_1.csv')
+    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=10,
+                          callbacks=[WandbCallback(),
+                                     PerformanceVisualizationCallback(data=test_base_generator,
+                                                                      evaluate_every_x_epoch=5,
+                                                                      output_dir=history_path / "stage_3")])
+    save_history_to_file(history_1, history_path / 'history_1.csv')
 
     unfreeze_model(model, 30, 1e-3)
     history_2 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=20,
-                          callbacks=[WandbCallback()])
-    save_history_to_file(history_2, Path(args.history) / 'history_2.csv')
+                          callbacks=[WandbCallback(),
+                                     PerformanceVisualizationCallback(data=test_base_generator,
+                                                                      evaluate_every_x_epoch=5,
+                                                                      output_dir=history_path / "stage_2")])
+    save_history_to_file(history_2, history_path / 'history_2.csv')
 
-    unfreeze_model(model, 80, 1e-4)
+    unfreeze_model(model, 100, 1e-4)
     history_3 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=80,
-                          callbacks=[WandbCallback()])
-    save_history_to_file(history_3, Path(args.history) / 'history_3.csv')
+                          callbacks=[WandbCallback(),
+                                     PerformanceVisualizationCallback(data=test_base_generator,
+                                                                      evaluate_every_x_epoch=5,
+                                                                      output_dir=history_path / "stage_3")])
+    save_history_to_file(history_3, history_path / 'history_3.csv')
