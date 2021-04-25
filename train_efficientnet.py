@@ -1,209 +1,25 @@
 import argparse as argparse
 import random
 import tensorflow as tf
-import numpy as np
-import matplotlib.pyplot as plt
 import imgaug.augmenters as iaa
 import imgaug as ia
 import pandas
-import cv2 as cv
+import wandb
 
+from wandb.keras import WandbCallback
 from pathlib import Path
-from sklearn.metrics import classification_report
-from scikitplot.metrics import plot_confusion_matrix, plot_roc
-from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import metrics
-from concurrent.futures import ThreadPoolExecutor
 from tensorflow.keras.layers.experimental import preprocessing
 from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers
 from tensorflow.keras.applications import EfficientNetB0
 
+from CustomImageDataGenerator import DataGenerator
+from PerformaneVisualizationCallback import PerformanceVisualizationCallback
+
 gpus = tf.config.list_physical_devices('GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
-
-
-class DataGenerator(tf.keras.utils.Sequence):
-    """Generates data for Keras with an imgaug sequence"""
-
-    def __init__(self,
-                 dataframe,
-                 x_col,
-                 y_col,
-                 aug_sequence,
-                 reduction=0.0,
-                 batch_size=32,
-                 size=224,
-                 shuffle=True,
-                 balance_dataset=True):
-        if reduction != 0.0 and balance_dataset is False:
-            raise Exception("Cannot set reduction without balancing dataset.")
-
-        self.df = dataframe if not balance_dataset else self.balance_dataset(dataframe, y_col, x_col, reduction)
-        self.x_col = x_col
-        self.y_col = y_col
-        self.df_index = self.df.index.tolist()
-        self.labels = self.extract_labels()
-        self.indexes = np.arange(len(self.df_index))
-        self.size = size
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.aug_sequence = aug_sequence
-        self.future_data_provider = None
-        self.current_index = 0
-        self.prefetch = False
-
-        self.on_epoch_end()
-
-    def __getitem__(self, index):
-        """Generate one batch of data"""
-        if self.prefetch:
-            data_batch = self.future_data_provider.result()
-            self.current_index = (self.current_index + 1) % self.__len__()
-            self.__prefetch_data(self.current_index)
-
-            return data_batch
-
-        return self.__get_data(index)
-
-    def __len__(self):
-        """Denotes the number of batches per epoch"""
-        return len(self.df_index) // self.batch_size
-
-    def reduce(self, dataframe, reduction):
-        if reduction > 0.0:
-            reduction_count = int(len(dataframe) * reduction)
-            drop_indices = np.random.choice(dataframe.index, reduction_count, replace=False)
-            return dataframe.drop(drop_indices).reset_index()
-        return dataframe
-
-    def balance_dataset(self, dataframe, label_column, path_column, reduction):
-        count_per_label = \
-        dataframe.value_counts(subset=[label_column]).reset_index(name='count').set_index(label_column)[
-            'count'].to_dict()
-        upper_limit = int((1.0 - reduction) * max(count_per_label.values()))
-        grouped_by_label = dataframe.groupby(label_column)[path_column].apply(list).reset_index(name='paths')
-
-        for index, row in grouped_by_label.iterrows():
-            label_name = row[label_column]
-            current_count = count_per_label[label_name]
-            missing = upper_limit - current_count
-
-            if missing < 0:
-                indices = dataframe.index[dataframe[label_column] == label_name]
-                drop_indices = np.random.choice(indices, abs(missing), replace=False)
-                dataframe = dataframe.drop(drop_indices).reset_index(drop=True)
-            elif missing > 0:
-                repeated = random.choices(row['paths'], k=missing)
-                extension = pandas.DataFrame([[label_name, path] for path in repeated],
-                                             columns=[label_column, path_column])
-                dataframe = pandas.concat([dataframe, extension])
-
-        return dataframe
-
-    def extract_labels(self):
-        labels = self.df[self.y_col].unique().tolist()
-        labels.sort()
-        return labels
-
-    def get_all_classes(self, one_hot=False):
-        y_true_list = []
-        for label in self.df['label']:
-            y_true = self.__to_one_hot(label) if one_hot else label
-            y_true_list.append(y_true)
-
-        return np.array(y_true_list)
-
-    def on_epoch_end(self):
-        """Updates indexes after each epoch"""
-        self.indexes = np.arange(len(self.df_index))
-        self.current_index = 0
-        if self.shuffle:
-            np.random.shuffle(self.indexes)
-        if self.prefetch:
-            self.__prefetch_data(0)
-
-    def __prefetch_data(self, index):
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            self.future_data_provider = executor.submit(self.__get_data, index)
-
-    def __to_one_hot(self, label):
-        encoding = np.zeros((len(self.labels)))
-        encoding[self.labels.index(label)] = 1.0
-        return encoding
-
-    def one_hot_to_label(self, one_hot):
-        index = np.argmax(one_hot)
-        return self.labels[index]
-
-    def __get_data(self, index):
-        # X.shape : (batch_size, *dim)
-        index = self.indexes[index * self.batch_size: (index + 1) * self.batch_size]
-        batch = [self.df_index[k] for k in index]
-
-        labels = []
-        for k in batch:
-            label = self.df.iloc[k][self.y_col]
-            label_encoding = self.__to_one_hot(label)
-            labels.append(label_encoding)
-
-        labels = np.array(labels)
-        images = self.resize_with_pad([cv.imread(self.df.iloc[k][self.x_col]) for k in batch], image_size=self.size)
-
-        if self.aug_sequence is not None:
-            images = self.aug_sequence.augment_images(images)
-
-        return np.stack(images), labels
-
-    @staticmethod
-    def resize_with_pad(images, image_size=224):
-        return iaa.Sequential([
-            iaa.Resize({"longer-side": image_size, "shorter-side": "keep-aspect-ratio"}),
-            iaa.PadToFixedSize(width=image_size, height=image_size)])(images=images)
-
-
-class PerformanceVisualizationCallback(Callback):
-    def __init__(self, model, data: DataGenerator, output_dir: Path):
-        super().__init__()
-        self.model = model
-        self.data = data
-        self.image_dir = output_dir
-        output_dir.mkdir(exist_ok=True, parents=True)
-
-    def on_epoch_end(self, epoch, logs={}):
-        y_predictions = []
-        y_true = []
-        for chunk in self.data:
-            y_predictions.extend(self.model.predict(chunk[0]))
-            y_true.extend([self.data.one_hot_to_label(one_hot) for one_hot in chunk[1]])
-
-        # y_predictions = self.model.predict(self.validation_data)
-        # y_true = self.validation_data.get_all_classes(one_hot=False)
-        y_true = np.array(y_true)
-        y_predictions = np.array(y_predictions)
-        y_pred = np.array([self.data.one_hot_to_label(y_pred) for y_pred in y_predictions])
-
-        report = classification_report(y_true, y_pred, output_dict=True)
-        report_df = pandas.DataFrame(report).transpose()
-        report_df.to_csv(self.image_dir / f'classification_report_epoch_{epoch}.csv')
-
-        results_df = pandas.DataFrame({'y_true': y_true, 'y_pred': y_pred})
-        results_df.to_csv(str(self.image_dir / f"classification_results_epoch_{epoch}.csv"))
-
-        # plot and save confusion matrix
-        fig_size = len(self.data.labels) // 2
-        fig, ax = plt.subplots(figsize=(fig_size + 4, fig_size + 3))
-
-        plot_confusion_matrix(y_true, y_pred, ax=ax, x_tick_rotation=1)
-        fig.savefig(str(self.image_dir / f'confusion_matrix_epoch_{epoch}'))
-        plt.close(fig)
-
-        # plot and save roc curve
-        fig, ax = plt.subplots(figsize=(fig_size + 4, fig_size + 3))
-        plot_roc(y_true, y_predictions, ax=ax)
-        fig.savefig(str(self.image_dir / f'roc_curve_epoch_{epoch}'))
-        plt.close(fig)
 
 
 def get_augmenting_sequence():
@@ -380,6 +196,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    wandb.login()
+
     train_df = pandas.read_csv(args.train)
     test_df = pandas.read_csv(args.validation)
     train_base_generator = DataGenerator(train_df, 'image_path', 'label', size=int(args.size),
@@ -403,8 +221,7 @@ if __name__ == '__main__':
         model=model,
         data=test_base_generator,
         output_dir=Path(args.history) / 'performance_visualizations_1')
-    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=100, epochs=10,
-                          callbacks=[performance_callback_1])
+    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=100, epochs=10)
     save_history_to_file(history_1, Path(args.history) / 'history_1.csv')
 
     performance_callback_2 = PerformanceVisualizationCallback(
@@ -412,8 +229,7 @@ if __name__ == '__main__':
         data=test_base_generator,
         output_dir=Path(args.history) / 'performance_visualizations_2')
     unfreeze_model(model, 30, 1e-3)
-    history_2 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=20,
-                          callbacks=[performance_callback_2])
+    history_2 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=20)
     save_history_to_file(history_2, Path(args.history) / 'history_2.csv')
 
     performance_callback_3 = PerformanceVisualizationCallback(
@@ -421,6 +237,5 @@ if __name__ == '__main__':
         data=test_base_generator,
         output_dir=Path(args.history) / 'performance_visualizations_3')
     unfreeze_model(model, 100, 1e-4)
-    history_3 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=80,
-                          callbacks=[performance_callback_3])
+    history_3 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=80)
     save_history_to_file(history_3, Path(args.history) / 'history_3.csv')
