@@ -11,9 +11,8 @@ def print_different(base_names, compare_names):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='List differences between two directories')
-    parser.add_argument('first', required=True, help='First directory to compare',
-                        type=str, dest='one')
-    parser.add_argument('second', required=True, help='Second directory to compare')
+    parser.add_argument('first', help='First directory to compare')
+    parser.add_argument('second', help='Second directory to compare')
     args = parser.parse_args()
 
     first_dir = Path(args.first)
