@@ -47,14 +47,22 @@ if __name__ == "__main__":
     for missing_part in missing_parts:
         if missing_part[-1] == 'a' or missing_part[-1] == 'b' or missing_part[-1] == 'c':
             missing_part = missing_part[:-1]
-
-        missing_parts_general.add(missing_part)
+            missing_parts_general.add(missing_part)
 
     missing_after_second_try = get_missing_names_in_parts_file(missing_parts_general, 'parts.json')
-    found_names.union(missing_parts_general.difference(missing_after_second_try))
+    found_names = found_names.union(missing_parts_general.difference(missing_after_second_try))
 
     print(f"Couldn't find following parts in the json parts list: "
-          f"\n\n{missing_after_second_try},\n\n")
+          f"\n\n{missing_after_second_try},\n\n"
+          f"Searching in unofficial parts")
+
+    with open('all_parts.json') as file:
+        found_parts_json = {
+            'parts': [part for part in json.load(file)['parts'] if
+                      part['base_file_name'] in missing_after_second_try or part[
+                          'file_name'] in missing_after_second_try]}
+        with open('unofficial_' + args.output, 'w') as output_file:
+            json.dump(found_parts_json, output_file)
 
     with open('parts.json') as file:
         found_parts_json = {
