@@ -35,11 +35,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     names = get_unique_names_from_file(Path(args.input))
-    missing_parts = get_missing_names_in_parts_file(names, 'parts.json')
-
+    missing_parts = get_missing_names_in_parts_file(names, 'all_parts.json')
     found_names = names.difference(missing_parts)
 
-    print(f"Couldn't find following parts in the json parts list: "
+    print(f"Couldn't find following parts in the json all_parts list: "
           f"\n\n{missing_parts},\n\n"
           f"searching for general names (without letters at the end of a name)")
 
@@ -52,19 +51,7 @@ if __name__ == "__main__":
     missing_after_second_try = get_missing_names_in_parts_file(missing_parts_general, 'parts.json')
     found_names = found_names.union(missing_parts_general.difference(missing_after_second_try))
 
-    print(f"Couldn't find following parts in the json parts list: "
-          f"\n\n{missing_after_second_try},\n\n"
-          f"Searching in unofficial parts")
-
     with open('all_parts.json') as file:
-        found_parts_json = {
-            'parts': [part for part in json.load(file)['parts'] if
-                      part['base_file_name'] in missing_after_second_try or part[
-                          'file_name'] in missing_after_second_try]}
-        with open('unofficial_' + args.output, 'w') as output_file:
-            json.dump(found_parts_json, output_file)
-
-    with open('parts.json') as file:
         found_parts_json = {
             'parts': [part for part in json.load(file)['parts'] if part['base_file_name'] in found_names]}
         with open(args.output, 'w') as output_file:
