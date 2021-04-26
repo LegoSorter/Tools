@@ -38,6 +38,10 @@ class DataGenerator(tf.keras.utils.Sequence):
         self.current_index = 0
         self.prefetch = False
 
+        print("Generator initialized")
+        print(f"Got {len(self.df)} images in {len(self.labels)} classes.")
+        print(f"Samples per class: {self.df.groupby('label').count().to_string()}")
+
         self.on_epoch_end()
 
     def __getitem__(self, index):

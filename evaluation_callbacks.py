@@ -51,6 +51,9 @@ class PerformanceVisualizationCallback(Callback):
         output_dir.mkdir(exist_ok=True, parents=True)
 
     def on_epoch_end(self, epoch, logs={}):
+        if epoch % self.evaluate_every_x_epoch != 0:
+            return
+
         y_predictions = []
         y_true = []
         for chunk in self.data:
@@ -71,10 +74,10 @@ class PerformanceVisualizationCallback(Callback):
         results_df.to_csv(str(self.image_dir / f"classification_results_epoch_{epoch}.csv"))
 
         # plot and save confusion matrix
-        fig_size = len(self.data.labels) // 2
+        fig_size = len(self.data.labels) // 20
         fig, ax = plt.subplots(figsize=(fig_size + 4, fig_size + 3))
 
-        plot_confusion_matrix(y_true, y_pred, ax=ax, x_tick_rotation=1)
+        plot_confusion_matrix(y_true, y_pred, ax=ax, x_tick_rotation=90)
         fig.savefig(str(self.image_dir / f'confusion_matrix_epoch_{epoch}'))
         plt.close(fig)
 

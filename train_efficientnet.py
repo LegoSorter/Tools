@@ -32,7 +32,7 @@ def get_augmenting_sequence():
             scale={"x": (0.8, 1.0), "y": (0.8, 1.0)},
             translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
             rotate=(-45, 45),
-            shear=(-20, 20),
+            shear=(-30, 30),
             order=[0, 1],
             cval=(0, 255),
             mode=ia.ALL
@@ -216,10 +216,15 @@ if __name__ == '__main__':
 
     NUM_CLASSES = len(train_df.label.unique())
 
-    train_base_generator = DataGenerator(train_df, 'image_path', 'label', image_size=int(args.size),
+    train_base_generator = DataGenerator(train_df, 'image_path', 'label',
+                                         reduction=0.6,
+                                         image_size=int(args.size),
                                          aug_sequence=get_augmenting_sequence(),
                                          batch_size=int(args.batch))
-    test_base_generator = DataGenerator(test_df, 'image_path', 'label', reduction=0.98, aug_sequence=None,
+
+    test_base_generator = DataGenerator(test_df, 'image_path', 'label',
+                                        reduction=0.9,
+                                        aug_sequence=None,
                                         image_size=int(args.size),
                                         batch_size=int(args.batch))
 
@@ -244,7 +249,7 @@ if __name__ == '__main__':
                           callbacks=[WandbCallback(),
                                      PerformanceVisualizationCallback(data=test_base_generator,
                                                                       evaluate_every_x_epoch=5,
-                                                                      output_dir=history_path / "stage_3")])
+                                                                      output_dir=history_path / "stage_1")])
     save_history_to_file(history_1, history_path / 'history_1.csv')
 
     unfreeze_model(model, 30, 1e-3)
