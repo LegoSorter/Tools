@@ -1,5 +1,6 @@
 import argparse
 import time
+import random
 from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -94,7 +95,8 @@ def read_data_from_xml_file(path: Path):
 
     for obj in tree.iter('object'):
         bb = obj.find('bndbox')
-        coordinates = (int(bb.find('xmin').text), int(bb.find('ymin').text), int(bb.find('xmax').text), int(bb.find('ymax').text))
+        coordinates = (
+            int(bb.find('xmin').text), int(bb.find('ymin').text), int(bb.find('xmax').text), int(bb.find('ymax').text))
         bbs.append(coordinates)
 
     return image_name, image_size, bbs
@@ -105,23 +107,26 @@ def is_image(file_name):
     return extension == 'jpeg' or extension == 'jpg' or extension == 'png'
 
 
-def process_images_in_path(input_path: Path, output_path: Path):
+def process_images_in_path(input_path: Path, output_path: Path, prefix: str = ''):
     start_time = time.time()
     counter = 0
 
     for file in input_path.iterdir():
         if file.is_file() and is_image(file.name):
-            xml_file_name = file.name.split(".")[0] + ".xml"
-            xml_path = file.parent / xml_file_name
+            aug_img_name = f"{prefix}{file.name}"
+            xml_name = file.name.split(".")[0] + ".xml"
+            aug_xml_name = f"{prefix}{xml_name}"
+            xml_path = file.parent / xml_name
             image_data = read_data_from_xml_file(xml_path)
             image, bbs = augment_image(image=np.array(Image.open(file)), bbs=image_data[2])
-            dest_path_img = output_path / file.name
-            dest_path_xml = output_path / xml_file_name
-            xml_file = to_label_file(file.name, str(dest_path_img), image_width=image_data[1][0],
+            dest_path_img = output_path / aug_img_name
+            dest_path_xml = output_path / aug_xml_name
+            xml_file = to_label_file(aug_img_name, str(dest_path_img), image_width=image_data[1][0],
                                      image_height=image_data[1][1], bbs_xyxy_array=bbs.to_xyxy_array())
             Image.fromarray(image).save(dest_path_img)
             with open(str(dest_path_xml), "w") as label_xml:
                 label_xml.write(xml_file)
+            counter += 1
 
     seconds_elapsed = time.time() - start_time
     print(
@@ -130,7 +135,7 @@ def process_images_in_path(input_path: Path, output_path: Path):
     )
 
 
-def process_recursive(input_path: Path, output_path: Path, executor):
+def process_recursive(input_path: Path, output_path: Path, executor, prefix: str = ''):
     output_path.mkdir(exist_ok=True)
     dirs_to_process = []
 
@@ -141,9 +146,9 @@ def process_recursive(input_path: Path, output_path: Path, executor):
     futures = []
     for directory in dirs_to_process:
         sub_out_path = (output_path / directory.name)
-        futures += process_recursive(directory, sub_out_path, executor)
+        futures += process_recursive(directory, sub_out_path, executor, prefix)
 
-    futures.append(executor.submit(process_images_in_path, input_path, output_path))
+    futures.append(executor.submit(process_images_in_path, input_path, output_path, prefix))
     return futures
 
 
@@ -156,12 +161,13 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--size', required=True, help='A size of a resized image.')
     parser.add_argument('-r', '--recursive', action='store_true',
                         help='Process images in the input_path and its subdirectories.')
+    parser.add_argument('-p', '--prefix', default='', help='Prefix for augmented files')
     args = parser.parse_args()
 
     if args.recursive:
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = process_recursive(Path(args.input), Path(args.output), executor)
+            futures = process_recursive(Path(args.input), Path(args.output), executor, args.prefix)
             for future in futures:
                 future.result()
     else:
-        process_images_in_path(Path(args.input), Path(args.output))
+        process_images_in_path(Path(args.input), Path(args.output), args.prefix)
