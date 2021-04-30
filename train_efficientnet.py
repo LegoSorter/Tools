@@ -174,7 +174,7 @@ def unfreeze_model(model, layers_to_unfreeze=20, learning_rate=1e-4):
             layer.trainable = True
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy"])
+    model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy", metrics.top_k_categorical_accuracy])
 
 
 def save_history_to_file(history, filename: Path):
