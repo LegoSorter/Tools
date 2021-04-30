@@ -2,7 +2,6 @@ from pathlib import Path
 
 import shutil
 import xml.etree.ElementTree as ET
-
 import argparse
 
 
@@ -74,6 +73,7 @@ if __name__ == '__main__':
                         type=str, dest='input')
     parser.add_argument('-o', '--output_path', required=True, help='Output directory',
                         type=str, dest='output')
+    parser.add_argument('-si', '--skip_images', action='store_true', help='Skip copying images', dest='skip_images')
     args = parser.parse_args()
 
     output_dir = Path(args.output)
@@ -90,4 +90,5 @@ if __name__ == '__main__':
             bbs = read_bbs_from_file(xml_path)
             output_path = get_output_path(xml_path, output_dir)
             create_annotation_file(output_path, bbs)
-            shutil.copy(image_path, output_path.parent / image_name)
+            if not args.skip_images:
+                shutil.copy(image_path, output_path.parent / image_name)

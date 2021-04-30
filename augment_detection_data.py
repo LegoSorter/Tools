@@ -111,22 +111,22 @@ def process_images_in_path(input_path: Path, output_path: Path, prefix: str = ''
     start_time = time.time()
     counter = 0
 
-    for file in input_path.iterdir():
-        if file.is_file() and is_image(file.name):
-            aug_img_name = f"{prefix}{file.name}"
-            xml_name = file.name.split(".")[0] + ".xml"
-            aug_xml_name = f"{prefix}{xml_name}"
-            xml_path = file.parent / xml_name
-            image_data = read_data_from_xml_file(xml_path)
-            image, bbs = augment_image(image=np.array(Image.open(file)), bbs=image_data[2])
-            dest_path_img = output_path / aug_img_name
-            dest_path_xml = output_path / aug_xml_name
-            xml_file = to_label_file(aug_img_name, str(dest_path_img), image_width=image_data[1][0],
-                                     image_height=image_data[1][1], bbs_xyxy_array=bbs.to_xyxy_array())
-            Image.fromarray(image).save(dest_path_img)
-            with open(str(dest_path_xml), "w") as label_xml:
-                label_xml.write(xml_file)
-            counter += 1
+    all_images = [file for file in input_path.iterdir() if file.is_file() and is_image(file.name)]
+
+    for file in all_images:
+        aug_img_name = f"{prefix}{file.name}"
+        xml_name = file.name.split(".")[0] + ".xml"
+        aug_xml_name = f"{prefix}{xml_name}"
+        xml_path = file.parent / xml_name
+        image_data = read_data_from_xml_file(xml_path)
+        image, bbs = augment_image(image=np.array(Image.open(file)), bbs=image_data[2])
+        dest_path_img = output_path / aug_img_name
+        dest_path_xml = output_path / aug_xml_name
+        xml_file = to_label_file(aug_img_name, str(dest_path_img), image_width=image.size[0], image_height=image.size[1], bbs_xyxy_array=bbs.to_xyxy_array())
+        Image.fromarray(image).save(dest_path_img)
+        with open(str(dest_path_xml), "w") as label_xml:
+            label_xml.write(xml_file)
+        counter += 1
 
     seconds_elapsed = time.time() - start_time
     print(
@@ -158,14 +158,14 @@ if __name__ == "__main__":
     parser.add_argument('-i' '--input_path', required=True, help='A path to a directory containing images to process.',
                         type=str, dest='input')
     parser.add_argument('-o', '--output_path', required=True, help='An output path.', type=str, dest='output')
-    parser.add_argument('-s', '--size', required=True, help='A size of a resized image.')
+    parser.add_argument('-s', '--size', default='640', required=True, help='A size of a resized image.')
     parser.add_argument('-r', '--recursive', action='store_true',
                         help='Process images in the input_path and its subdirectories.')
     parser.add_argument('-p', '--prefix', default='', help='Prefix for augmented files')
     args = parser.parse_args()
 
     if args.recursive:
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=16) as executor:
             futures = process_recursive(Path(args.input), Path(args.output), executor, args.prefix)
             for future in futures:
                 future.result()
