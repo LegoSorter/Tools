@@ -122,7 +122,7 @@ def process_images_in_path(input_path: Path, output_path: Path, prefix: str = ''
         image, bbs = augment_image(image=np.array(Image.open(file)), bbs=image_data[2])
         dest_path_img = output_path / aug_img_name
         dest_path_xml = output_path / aug_xml_name
-        xml_file = to_label_file(aug_img_name, str(dest_path_img), image_width=image.size[0], image_height=image.size[1], bbs_xyxy_array=bbs.to_xyxy_array())
+        xml_file = to_label_file(aug_img_name, str(dest_path_img), image_width=image.shape[0], image_height=image.shape[1], bbs_xyxy_array=bbs.to_xyxy_array())
         Image.fromarray(image).save(dest_path_img)
         with open(str(dest_path_xml), "w") as label_xml:
             label_xml.write(xml_file)
