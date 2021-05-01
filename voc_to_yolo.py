@@ -6,7 +6,7 @@ import argparse
 
 
 def list_directories(path):
-    directories = []
+    directories = [path]
     for path in path.glob("*"):
         if path.is_dir():
             directories.append(path)
@@ -62,7 +62,10 @@ def create_annotation_file(path: Path, bbs):
 
 def get_output_path(input_path: Path, output_dir: Path):
     name = input_path.name.split(".")[0] + ".txt"
-    return output_dir / input_path.parent.name / name
+
+    if input_path != output_dir:
+        return output_dir / input_path.parent.name / name
+    return output_dir / name
 
 
 if __name__ == '__main__':
