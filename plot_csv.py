@@ -12,33 +12,24 @@ def read_file(filename: Path, columns):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Plots either one csv or comparison of two data series.')
-    parser.add_argument('-b' '--base', required=True, help='A path to a csv file containing data series.',
-                        type=str, dest='base')
-    parser.add_argument('-e', '--experiment', required=False,
-                        help='A path to a csv file to compare with a base file.', type=str, dest='experiment')
+    parser = argparse.ArgumentParser(description='Plots either one csv or comparison of many data series.')
+    parser.add_argument('-i', '--input_series', help='Paths to csv files', required=True, nargs='+', dest='series')
+    parser.add_argument('-l', '--labels', help='Output labels for each data series', required=False, nargs='+', dest='labels')
     parser.add_argument('-o', '--output', help='An output file path.', required=True)
-    parser.add_argument('-c', '--columns', required=True, nargs='+',
-                        help='Specify columns to plot, can be multiple',
-                        dest='columns')
-    parser.add_argument('-x', '--x-label', default='epoch', help='The name for x axis', dest='x_label')
-    parser.add_argument('-y', '--y-label', default='accuracy', help='The name for y axis', dest='y_label')
+    parser.add_argument('-c', '--column', help='Specify a column to plot', required=True, dest='column')
+    parser.add_argument('-x', '--x-label', help='The name for x axis', default='x', dest='x_label')
+    parser.add_argument('-y', '--y-label', help='The name for y axis', default='y', dest='y_label')
     args = parser.parse_args()
 
-    base_data = read_file(Path(args.base), args.columns)
+    data_to_plot = pd.DataFrame()
 
-    if args.experiment:
-        experiment_data = read_file(Path(args.experiment), args.columns)
+    if not args.labels:
+        args.labels = args.series
 
-        for column_name in args.columns:
-            experiment_data = experiment_data.rename(columns={column_name: column_name + ' experiment'})
-            base_data = base_data.rename(columns={column_name: column_name + ' base'})
+    for input_file, label in zip(args.series, args.labels):
+        data_to_plot[label] = read_file(Path(input_file), args.column)
 
-        data = pd.concat([base_data, experiment_data], axis=1)
-        ax = data.plot()
-    else:
-        ax = base_data.plot()
-
+    ax = data_to_plot.plot()
     ax.set_xlabel(args.x_label)
     ax.set_ylabel(args.y_label)
     ax.legend(loc='upper left')
