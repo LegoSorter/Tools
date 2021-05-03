@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from pathlib import Path
 
-plt.rcParams['figure.figsize'] = [12, 8]
+plt.rcParams['figure.figsize'] = [6, 4]
 
 
 def read_file(filename: Path, columns):
@@ -19,9 +19,12 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--column', help='Specify a column to plot', required=True, dest='column')
     parser.add_argument('-x', '--x-label', help='The name for x axis', default='x', dest='x_label')
     parser.add_argument('-y', '--y-label', help='The name for y axis', default='y', dest='y_label')
+    parser.add_argument('-yl', '--y-limit', help='The limit for y ax', nargs='+', dest='ylim')
     args = parser.parse_args()
 
     data_to_plot = pd.DataFrame()
+
+    plot_legend = args.labels
 
     if not args.labels:
         args.labels = args.series
@@ -29,8 +32,10 @@ if __name__ == "__main__":
     for input_file, label in zip(args.series, args.labels):
         data_to_plot[label] = read_file(Path(input_file), args.column)
 
-    ax = data_to_plot.plot()
+    ax = data_to_plot.plot(legend=plot_legend)
     ax.set_xlabel(args.x_label)
     ax.set_ylabel(args.y_label)
-    ax.legend(loc='upper left')
+    #ax.legend(loc='upper left')
+    if args.ylim:
+        plt.ylim(float(args.ylim[0]), float(args.ylim[1]))
     ax.get_figure().savefig(args.output)
