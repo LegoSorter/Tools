@@ -164,10 +164,13 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--prefix', default='', help='Prefix for augmented files')
     args = parser.parse_args()
 
+    output_path = Path(args.output)
+    output_path.mkdir(exist_ok=True, parents=True)
+
     if args.recursive:
         with ThreadPoolExecutor(max_workers=16) as executor:
-            futures = process_recursive(Path(args.input), Path(args.output), executor, args.prefix)
+            futures = process_recursive(Path(args.input), output_path, executor, args.prefix)
             for future in futures:
                 future.result()
     else:
-        process_images_in_path(Path(args.input), Path(args.output), args.prefix)
+        process_images_in_path(Path(args.input), output_path, args.prefix)
