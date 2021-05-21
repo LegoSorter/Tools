@@ -26,8 +26,6 @@ def get_augmenting_sequence():
     sometimes = lambda aug: iaa.Sometimes(0.5, aug)
 
     return iaa.Sequential([
-        iaa.Fliplr(0.3),
-        iaa.Flipud(0.3),
         iaa.Affine(
             scale={"x": (0.8, 1.0), "y": (0.8, 1.0)},
             translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
@@ -167,11 +165,15 @@ def build_model(num_classes, config):
     return model
 
 
-def unfreeze_model(model, layers_to_unfreeze=20, learning_rate=1e-4):
+def unfreeze_model(model, layers_to_unfreeze=20, learning_rate=1e-4, whole_model=False):
     # We unfreeze the top x layers while leaving BatchNorm layers frozen
     for layer in model.layers[-layers_to_unfreeze:]:
         if not isinstance(layer, layers.BatchNormalization):
             layer.trainable = True
+
+    if whole_model:
+        print("Unfreezing all layers.")
+        model.trainable = True
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy", metrics.top_k_categorical_accuracy])
@@ -182,6 +184,20 @@ def save_history_to_file(history, filename: Path):
     with open(filename, mode='w') as f:
         hist_df.to_csv(f)
 
+
+def train(model, epochs=20, name='1', history_path=Path("./history")):
+    checkpoint_filepath = history_path / (f"./weights/{name}/" + "checkpoint_{epoch:02d}")
+    model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+        filepath=checkpoint_filepath,
+        save_weights_only=True,
+        monitor='val_accuracy',
+        mode='max')
+
+    history = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=epochs,
+                        callbacks=[WandbCallback(), model_checkpoint_callback,
+                                   PerformanceVisualizationCallback(data=test_base_generator, evaluate_every_x_epoch=5,
+                                                                    output_dir=history_path / f"stage_name")])
+    save_history_to_file(history, history_path / f"history_{name}.csv")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -223,7 +239,7 @@ if __name__ == '__main__':
                                          batch_size=int(args.batch))
 
     test_base_generator = DataGenerator(test_df, 'image_path', 'label',
-                                        reduction=0.9,
+                                        reduction=0.95,
                                         aug_sequence=None,
                                         image_size=int(args.size),
                                         batch_size=int(args.batch))
@@ -231,11 +247,11 @@ if __name__ == '__main__':
     wandb.login()
 
     run = wandb.init(project='lego',
-                     name='300_classes_1',
+                     name='final_lego_training',
                      config={
                          "learning_rate": 1e-2,
                          "epochs": 25,
-                         "batch_size": 32,
+                         "batch_size": args.batch,
                          "loss_function": "categorical_crossentropy",
                          "architecture": "CNN",
                          "img_size": int(args.size),
@@ -245,25 +261,12 @@ if __name__ == '__main__':
 
     ####### TRAIN #######
 
-    history_1 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=10,
-                          callbacks=[WandbCallback(),
-                                     PerformanceVisualizationCallback(data=test_base_generator,
-                                                                      evaluate_every_x_epoch=5,
-                                                                      output_dir=history_path / "stage_1")])
-    save_history_to_file(history_1, history_path / 'history_1.csv')
-
-    unfreeze_model(model, 30, 1e-3)
-    history_2 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=20,
-                          callbacks=[WandbCallback(),
-                                     PerformanceVisualizationCallback(data=test_base_generator,
-                                                                      evaluate_every_x_epoch=5,
-                                                                      output_dir=history_path / "stage_2")])
-    save_history_to_file(history_2, history_path / 'history_2.csv')
-
-    unfreeze_model(model, 100, 1e-4)
-    history_3 = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=80,
-                          callbacks=[WandbCallback(),
-                                     PerformanceVisualizationCallback(data=test_base_generator,
-                                                                      evaluate_every_x_epoch=5,
-                                                                      output_dir=history_path / "stage_3")])
-    save_history_to_file(history_3, history_path / 'history_3.csv')
+    train(model, 10, "10_epochs_0.01_lr_1_layer")
+    unfreeze_model(model, 20, 1e-3)
+    train(model, 10, "10_epochs_0.001_lr_20_layers")
+    unfreeze_model(model, 100, 1e-3)
+    train(model, 20, "20_epochs_0.001lr_100_layers")
+    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=1e-3, whole_model=True)
+    train(model, 80, "80_epochs_0.001lr_all_layers")
+    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=1e-4, whole_model=True)
+    train(model, 20, "20_epochs_0.0001lr_all_layers")

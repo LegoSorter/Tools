@@ -1,4 +1,6 @@
 import random
+
+import imgaug
 import tensorflow as tf
 import numpy as np
 import imgaug.augmenters as iaa
@@ -148,4 +150,4 @@ class DataGenerator(tf.keras.utils.Sequence):
     def resize_with_pad(images, image_size=224):
         return iaa.Sequential([
             iaa.Resize({"longer-side": image_size, "shorter-side": "keep-aspect-ratio"}),
-            iaa.PadToFixedSize(width=image_size, height=image_size)])(images=images)
+            iaa.PadToFixedSize(width=image_size, height=image_size, pad_mode=imgaug.imgaug.ALL)])(images=images)
