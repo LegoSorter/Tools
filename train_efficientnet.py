@@ -134,10 +134,9 @@ def get_augmenting_sequence():
 def build_model(num_classes, config):
     img_augmentation = Sequential(
         [
-            preprocessing.RandomRotation(factor=0.5),
+            preprocessing.RandomRotation(factor=0.1),
             preprocessing.RandomTranslation(height_factor=0.1, width_factor=0.1),
-            preprocessing.RandomFlip(),
-            preprocessing.RandomContrast(factor=0.3),
+            preprocessing.RandomContrast(factor=0.1),
         ],
         name="img_augmentation",
     )
