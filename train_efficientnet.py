@@ -11,7 +11,7 @@ from tensorflow.keras import metrics
 from tensorflow.keras.layers.experimental import preprocessing
 from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers
-from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras.applications import EfficientNetB0, EfficientNetB3
 from wandb.integration.keras import WandbCallback
 
 from evaluation_callbacks import PerformanceVisualizationCallback
@@ -27,13 +27,13 @@ def get_augmenting_sequence():
 
     return iaa.Sequential([
         iaa.Affine(
-            scale={"x": (0.8, 1.0), "y": (0.8, 1.0)},
-            translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-            rotate=(-45, 45),
-            shear=(-30, 30),
+            scale={"x": (0.9, 1.0), "y": (0.9, 1.0)},
+            translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
+            rotate=(-15, 15),
+            shear=(-10, 10),
             order=[0, 1],
             cval=(0, 255),
-            mode=ia.ALL
+            mode=["constant"]
         ),
         iaa.SomeOf((0, 5),
                    [
@@ -56,6 +56,7 @@ def get_augmenting_sequence():
                            iaa.GaussianBlur((0, 3.0)),
                            iaa.AverageBlur(k=(2, 7)),
                            iaa.MedianBlur(k=(3, 11)),
+                           iaa.MotionBlur()
                        ]),
 
                        # Sharpen each image, overlay the result with the original
@@ -167,13 +168,10 @@ def build_model(num_classes, config):
 
 def unfreeze_model(model, layers_to_unfreeze=20, learning_rate=1e-4, whole_model=False):
     # We unfreeze the top x layers while leaving BatchNorm layers frozen
-    for layer in model.layers[-layers_to_unfreeze:]:
+    _layers = model.layers[-layers_to_unfreeze:] if not whole_model else model.layers
+    for layer in _layers:
         if not isinstance(layer, layers.BatchNormalization):
             layer.trainable = True
-
-    if whole_model:
-        print("Unfreezing all layers.")
-        model.trainable = True
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy", metrics.top_k_categorical_accuracy])
@@ -193,7 +191,7 @@ def train(model, epochs=20, name='1', history_path=Path("./history")):
         monitor='val_accuracy',
         mode='max')
 
-    history = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=500, epochs=epochs,
+    history = model.fit(train_base_generator, validation_data=test_base_generator, steps_per_epoch=1000, epochs=epochs,
                         callbacks=[WandbCallback(), model_checkpoint_callback,
                                    PerformanceVisualizationCallback(data=test_base_generator, evaluate_every_x_epoch=5,
                                                                     output_dir=history_path / f"stage_name")])
@@ -238,16 +236,36 @@ if __name__ == '__main__':
                                          aug_sequence=get_augmenting_sequence(),
                                          batch_size=int(args.batch))
 
+    from PIL import Image
+    import random
+    Path("train_renders").mkdir(exist_ok=True)
+    counter = 0
+    for data in train_base_generator:
+        for image, label in zip(data[0], data[1]):
+            Image.fromarray(image).save("train_renders/" + f"{train_base_generator.one_hot_to_label(label)}_" + str(random.randint(0, 100)) + ".jpg")
+        counter += 1
+        if counter > 10:
+            break
+
     test_base_generator = DataGenerator(test_df, 'image_path', 'label',
                                         reduction=0.95,
                                         aug_sequence=None,
                                         image_size=int(args.size),
                                         batch_size=int(args.batch))
 
+    counter = 0
+    Path("test_photos").mkdir(exist_ok=True)
+    for data in test_base_generator:
+        for image, label in zip(data[0], data[1]):
+            Image.fromarray(image).save("test_photos/" + f"{test_base_generator.one_hot_to_label(label)}_" + str(random.randint(0, 100)) + ".jpg")
+        counter += 1
+        if counter > 10:
+            break
+
     wandb.login()
 
     run = wandb.init(project='lego',
-                     name='final_lego_training',
+                     name=args.history,
                      config={
                          "learning_rate": 1e-2,
                          "epochs": 25,
@@ -259,14 +277,18 @@ if __name__ == '__main__':
     config = wandb.config
     model = build_model(NUM_CLASSES, config)
 
-    ####### TRAIN #######
+    ###### TRAIN #######
 
-    train(model, 10, "10_epochs_0.01_lr_1_layer")
-    unfreeze_model(model, 20, 1e-3)
-    train(model, 10, "10_epochs_0.001_lr_20_layers")
+    train(model, 10, "10_epochs_0.01_lr_1_layer", args.history)
+    unfreeze_model(model, 30, 5e-3)
+    train(model, 20, "20_epochs_0.005_lr_30_layers", args.history)
     unfreeze_model(model, 100, 1e-3)
-    train(model, 20, "20_epochs_0.001lr_100_layers")
-    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=1e-3, whole_model=True)
-    train(model, 80, "80_epochs_0.001lr_all_layers")
-    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=1e-4, whole_model=True)
-    train(model, 20, "20_epochs_0.0001lr_all_layers")
+    train(model, 40, "40_epochs_0.001lr_100_layers", Path(args.history))
+    unfreeze_model(model, 200, 5e-4)
+    train(model, 40, "40_epochs_0.0005lr_200_layers", Path(args.history))
+    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=5e-5, whole_model=True)
+    train(model, 80, "80_epochs_0.00005lr_all_layers", Path(args.history))
+    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=1e-5, whole_model=True)
+    train(model, 40, "40_epochs_0.00001lr_all_layers", Path(args.history))
+    unfreeze_model(model, layers_to_unfreeze=0, learning_rate=1e-6, whole_model=True)
+    train(model, 40, "40_epochs_0.000001lr_all_layers", Path(args.history))
